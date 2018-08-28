@@ -34,7 +34,7 @@ public class TxHandler {
     public boolean isValidTx(Transaction tx) {
     	double inputSum = 0; // sum of {@code tx}s input values
     	double outputSum = 0; // sum of output values
-    	ArrayList<UTXO> utxos = utxoPool.getAllUTXO(); // Iterable list of all UTXOs from utxoPool - necessary?
+    	//ArrayList<UTXO> utxos = utxoPool.getAllUTXO(); // Iterable list of all UTXOs from utxoPool - necessary?
     	ArrayList<Transaction.Input> txInputs = tx.getInputs(); // iterable list of all imputs
     	ArrayList<Transaction.Output> txOutputs = tx.getOutputs(); // iterable list of all outputs
     	HashSet<UTXO> utxosClaimed = new HashSet<UTXO>(); // how many times a tx matches tx's in the UTXO pool
@@ -64,16 +64,16 @@ public class TxHandler {
 	   		// check signatures on each input of {@code tx} are valid
     		// the signature it contains must be a valid signature over the 
     	    // current transaction with the public key in the spent output.
-//	   		if (!(Crypto.verifySignature(transactionOutput.address, tx.getRawDataToSign(in), txo.signature))) {
-//	   			return false;
-//	   		}
+	   		if (!(Crypto.verifySignature(transactionOutput.address, tx.getRawDataToSign(in), txo.signature))) {
+	   			return false;
+	   		}
 
     		// to test locally
-    		RSAKey address = transactionOutput.address;
-	   		if (!address.verifySignature(tx.getRawDataToSign(in), txo.signature)) {
-	   			//System.out.println("signature is bad");
-	            return false;
-	   		}
+//    		RSAKey address = transactionOutput.address;
+//	   		if (!address.verifySignature(tx.getRawDataToSign(in), txo.signature)) {
+//	   			//System.out.println("signature is bad");
+//	            return false;
+//	   		}
 
     		inputSum += txValue;
 
@@ -108,18 +108,50 @@ public class TxHandler {
      */
     public Transaction[] handleTxs(Transaction[] possibleTxs) {
         Transaction[] acceptedTrans = new Transaction[possibleTxs.length];
-    	for (int i = 0; i < possibleTxs.length; i++) {
+        int totalTx = 0; // counts how many transactions were valid
+
+        //Add valid transactions, set null for invalid
+        for (int i = 0; i < possibleTxs.length; i++) {
     		if(isValidTx(possibleTxs[i])) {
+    			
     			acceptedTrans[i] = possibleTxs[i];
+    			totalTx++;
+    			updateUTXOPool(possibleTxs[i]); // updating utxo pool will invalidate future double spend attempts
     		} else {
-    			updateUTXOPool(possibleTxs[i]);
+    			acceptedTrans[i] = null;
     		}
     	}
+
+        // Create new array with only valid transactions and right size 
+		Transaction[] tmp = new Transaction[totalTx];
+		int j = 0; // relative to totalTx
+		for (int i = 0; i < acceptedTrans.length; i++) {
+			if (acceptedTrans[i] != null) {
+				tmp[j] = acceptedTrans[i];
+				j++;
+			}
+		}
+
+		acceptedTrans = tmp;
+
         return acceptedTrans;
     }
-
-    private boolean updateUTXOPool(Transaction tr) {
-    	utxoPool.
+    
+    // removes spent TX, adds new UTXOs to pool
+    private void updateUTXOPool(Transaction tx) { // might want to return a type or error?
+    	// remove spent TX
+    	ArrayList<Transaction.Input> txInputs = tx.getInputs();
+    	for (Transaction.Input txi: txInputs) {
+    		UTXO utxo = new UTXO(txi.prevTxHash, txi.outputIndex); 
+    		utxoPool.removeUTXO(utxo);
+    	}
+    	
+    	//add transaction outputs to UTXO
+    	ArrayList<Transaction.Output> txOutputs = tx.getOutputs();
+    	for (int i = 0; i < txOutputs.size(); i++) {
+    		UTXO utxo = new UTXO(tx.getHash(), i); // create utxo based on Transaction
+    		utxoPool.addUTXO(utxo, txOutputs.get(i)); // add to pool
+    	}
+    	
     }
-
 }
